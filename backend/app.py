@@ -49,79 +49,99 @@ def _build_task_prompt(tasks):
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
     # Return all tasks sorted by newest first.
-    tasks = _fetch_all_tasks()
-    return jsonify(tasks), 200
+    try:
+        tasks = _fetch_all_tasks()
+        return jsonify(tasks), 200
+    except Exception as e:
+        print("FULL ERROR TRACEBACK in GET /tasks:")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/tasks", methods=["POST"])
 def create_task():
     # Create a new task from JSON input.
-    payload = request.get_json(silent=True) or {}
-    title = (payload.get("title") or "").strip()
+    try:
+        payload = request.get_json(silent=True) or {}
+        title = (payload.get("title") or "").strip()
 
-    if not title:
-        return jsonify({"error": "Title is required"}), 400
+        if not title:
+            return jsonify({"error": "Title is required"}), 400
 
-    connection = get_db_connection()
-    cursor = connection.execute("INSERT INTO tasks (title, done) VALUES (?, 0)", (title,))
-    connection.commit()
+        connection = get_db_connection()
+        cursor = connection.execute("INSERT INTO tasks (title, done) VALUES (?, 0)", (title,))
+        connection.commit()
 
-    row = connection.execute(
-        "SELECT id, title, done, created_at FROM tasks WHERE id = ?",
-        (cursor.lastrowid,),
-    ).fetchone()
-    connection.close()
+        row = connection.execute(
+            "SELECT id, title, done, created_at FROM tasks WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        connection.close()
 
-    task = {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"]),
-        "created_at": row["created_at"],
-    }
-    return jsonify(task), 201
+        task = {
+            "id": row["id"],
+            "title": row["title"],
+            "done": bool(row["done"]),
+            "created_at": row["created_at"],
+        }
+        return jsonify(task), 201
+    except Exception as e:
+        print("FULL ERROR TRACEBACK in POST /tasks:")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def toggle_task(task_id):
     # Toggle a task between done and not done.
-    connection = get_db_connection()
-    result = connection.execute(
-        "UPDATE tasks SET done = CASE done WHEN 1 THEN 0 ELSE 1 END WHERE id = ?",
-        (task_id,),
-    )
+    try:
+        connection = get_db_connection()
+        result = connection.execute(
+            "UPDATE tasks SET done = CASE done WHEN 1 THEN 0 ELSE 1 END WHERE id = ?",
+            (task_id,),
+        )
 
-    if result.rowcount == 0:
+        if result.rowcount == 0:
+            connection.close()
+            return jsonify({"error": "Task not found"}), 404
+
+        connection.commit()
+        row = connection.execute(
+            "SELECT id, title, done, created_at FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
         connection.close()
-        return jsonify({"error": "Task not found"}), 404
 
-    connection.commit()
-    row = connection.execute(
-        "SELECT id, title, done, created_at FROM tasks WHERE id = ?",
-        (task_id,),
-    ).fetchone()
-    connection.close()
-
-    task = {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"]),
-        "created_at": row["created_at"],
-    }
-    return jsonify(task), 200
+        task = {
+            "id": row["id"],
+            "title": row["title"],
+            "done": bool(row["done"]),
+            "created_at": row["created_at"],
+        }
+        return jsonify(task), 200
+    except Exception as e:
+        print("FULL ERROR TRACEBACK in PUT /tasks/<id>:")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
     # Delete a task by ID.
-    connection = get_db_connection()
-    result = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    connection.commit()
-    connection.close()
+    try:
+        connection = get_db_connection()
+        result = connection.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        connection.commit()
+        connection.close()
 
-    if result.rowcount == 0:
-        return jsonify({"error": "Task not found"}), 404
+        if result.rowcount == 0:
+            return jsonify({"error": "Task not found"}), 404
 
-    return jsonify({"message": "Task deleted"}), 200
+        return jsonify({"message": "Task deleted"}), 200
+    except Exception as e:
+        print("FULL ERROR TRACEBACK in DELETE /tasks/<id>:")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/summarize", methods=["POST"])
@@ -150,11 +170,13 @@ def summarize_tasks():
         return jsonify({"summary": response.content[0].text})
 
     except Exception as e:
-        print("FULL ERROR TRACEBACK:")
+        print("FULL ERROR TRACEBACK in POST /summarize:")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
+    # Ensure database/table exist before accepting requests.
+    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
