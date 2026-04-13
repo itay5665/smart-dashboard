@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 import './App.css'
 
-const API_URL = 'http://127.0.0.1:5000'
+const API_URL = 'https://smart-dashboard-backend-dilq.onrender.com'
 
 function App() {
   const [tasks, setTasks] = useState([])
